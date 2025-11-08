@@ -137,29 +137,84 @@ with col1:
         st.session_state.show_all = True
 
 with col2:
-    if st.button("📎 複製所有值", use_container_width=True):
-        values = ["" if st.session_state.numbers_dict[k] is None else str(st.session_state.numbers_dict[k]) 
-                  for k in sorted(VALID_KEYS)]
-        
-        if all(v == "" for v in values):
+    values = ["" if st.session_state.numbers_dict[k] is None else str(st.session_state.numbers_dict[k]) 
+              for k in sorted(VALID_KEYS)]
+    
+    if all(v == "" for v in values):
+        st.button("📎 複製所有值", disabled=True, use_container_width=True)
+        if st.session_state.get("show_copy_warning"):
             st.warning("⚠️ 沒有可複製的值")
-        else:
-            text = "\n".join(values)
-            # Use browser clipboard API for mobile compatibility
-            copy_script = f"""
-            <script>
-                const text = `{text}`;
-                navigator.clipboard.writeText(text).then(function() {{
-                    window.parent.postMessage({{type: 'clipboard_success'}}, '*');
-                }}).catch(function(err) {{
-                    window.parent.postMessage({{type: 'clipboard_error'}}, '*');
-                }});
-            </script>
-            """
-            components.html(copy_script, height=0)
-            st.success("✅ 值已複製到剪貼簿")
-            st.caption("如果複製失敗，請長按下方文字並手動複製：")
-            st.code(text)
+    else:
+        text = "\n".join(values)
+        # Escape special characters for JavaScript
+        text_escaped = text.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+        
+        # Create a custom HTML button with direct clipboard access
+        copy_button_html = f"""
+        <div style="width: 100%;">
+            <button id="copyBtn" style="
+                width: 100%;
+                padding: 0.5rem 1rem;
+                background-color: #ff4b4b;
+                color: white;
+                border: none;
+                border-radius: 0.5rem;
+                font-size: 1rem;
+                cursor: pointer;
+                font-weight: 500;
+            ">📎 複製所有值</button>
+            <div id="copyStatus" style="margin-top: 0.5rem; font-size: 0.875rem;"></div>
+            <textarea id="fallbackText" style="
+                position: absolute;
+                left: -9999px;
+                width: 1px;
+                height: 1px;
+            ">{text_escaped}</textarea>
+        </div>
+        <script>
+            const btn = document.getElementById('copyBtn');
+            const status = document.getElementById('copyStatus');
+            const fallbackText = document.getElementById('fallbackText');
+            
+            btn.addEventListener('click', async function() {{
+                const text = `{text_escaped}`;
+                let success = false;
+                
+                // Method 1: Try modern Clipboard API
+                try {{
+                    await navigator.clipboard.writeText(text);
+                    success = true;
+                }} catch (err) {{
+                    // Method 2: Fallback to execCommand (works on mobile Safari)
+                    try {{
+                        fallbackText.value = text;
+                        fallbackText.select();
+                        fallbackText.setSelectionRange(0, 99999);
+                        success = document.execCommand('copy');
+                    }} catch (err2) {{
+                        success = false;
+                    }}
+                }}
+                
+                if (success) {{
+                    status.innerHTML = '<span style="color: #0e7c46;">✅ 值已複製到剪貼簿</span>';
+                    btn.style.backgroundColor = '#0e7c46';
+                    setTimeout(() => {{
+                        btn.style.backgroundColor = '#ff4b4b';
+                        status.innerHTML = '';
+                    }}, 2000);
+                }} else {{
+                    status.innerHTML = '<span style="color: #ff8c00;">⚠️ 複製失敗，請使用下方文字框手動複製</span>';
+                }}
+            }});
+        </script>
+        """
+        
+        components.html(copy_button_html, height=100)
+        
+        # Always show the fallback text area for manual copy
+        with st.expander("📝 手動複製（如果上方按鈕無效）"):
+            st.text_area("所有值", value=text, height=200, label_visibility="collapsed")
 
 with col3:
     if st.button("🗑️ 清空所有值", use_container_width=True):
